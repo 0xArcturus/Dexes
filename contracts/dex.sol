@@ -4,7 +4,10 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract Dex {
+
+//This is an exercise to put into practice a basic Dex based on Uniswap's V1 protocol, 
+//as a pair that exchanges native ETH with the ERC20 token address we introduce on contract deployment.
+contract MinimalViableDexV1 {
     using SafeMath for uin256;
     IERC20 token;
     uint256 public totalLiquidity;
@@ -73,16 +76,49 @@ contract Dex {
 
     function deposit()
      public payable returns (uint256) {
+        //checks the original ETH reserve, subtracting what we have sent
         uint256 eth_reserve = address(this).balance.sub(msg.value);
+        //Token reserve
         uint256 token_reserve = token.balanceOf(address(this));
-        uint256 token_amount = (msg.value.mul(totalLiquidity) / eth_reserve).add(1);
+
+        //token amount example with a pool with reserves of 4 eth and 8000 Dai
+        // we send 1 eth, 1 * 8000 / 4 = 2000, therefore it will input the balance of 1 2000, which is correct.
+        uint256 token_amount = (msg.value.mul(token_reserve) / eth_reserve).add(1);
+        
+        //((eth sent * total liquidity shares ) / eth reserves ) + 1
+        // the previous formula with 18 decimals makes it so that the LP tokens minted to the user is
+        //equal to the eth send, since the total liquidity shares in V1 is always going to be equal to the eth reserves.
         uint256 liquidity_minted = msg.value.mul(totalLiquidity) / eth_reserve;
+        //liquidity tokens added to user balance
         liquidityProvided[msg.sender] = liquidityProvided[msg.sender].add(liquidity_minted);
+        //update total liquidity for future liquidity operations
         totalLiquidity = totalLiquidity.add(liquidity_minted);
+        //call transferFrom with the approved tokens to this contract to finish adding liquidity
         require(token.transferFrom(msg.sender, address(this), token_amount));
         return liquidity_minted;
 
+        //on V2 the process is transferFunction agnostic, there is no approval, instead, the tokens must be sent to the contract,
+        //the contract itself will keep track of the token balance after each interaction, and will calculate how many tokens you have sent, 
+        //based on the difference between the balanceOf its own address in the ERC20 contract, with its own balance data structure.
 
         
+    }
+
+    function withdraw(uint256 amount) public returns(uint256, uint256) {
+        //ERC20 token call to know what is the balance of this contract
+        uint256 token_reserve = token.balanceOf(address(this));
+        //on the same pool mentioned before, with 5 eth and 10000 DAI the user inputs 1 as amount
+        //1 * 5 / 5 = 1
+        uint256 eth_amount = amount.mul(address(this).balance) / totalLiquidity;
+        //1 * 10000 / 5 = 2000
+        uint256 token_amount = amount.mul(token_reserve) / totalLiquidity;
+        //liquidity subtracted from the users liquidity balance -1 = 0
+        liquidity[msg.sender] = liquidity[msg.sender].sub(eth_amount);
+
+        //transfer eth to user natively
+        msg.sender.transfer(eth_amount);
+        //transfer 2000 dai to user
+        require(token.transfer(msg.sender, token_amount));
+        return (eth_amount, token_amount);
     }
 }
