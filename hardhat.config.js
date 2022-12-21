@@ -14,7 +14,7 @@ const COINMARKETCAP_API_KEY = process.env.COINMARKETCAP_API_KEY
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY
 
 module.exports = {
-    solidity: "0.8.8",
+    solidity: "0.8.0",
     defaultNetwork: "hardhat",
     networks: {
         hardhat: {
