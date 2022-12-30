@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 //contract with three owner addresses and two confirmations required
 
-contract tokenControlMultiSig {
+contract YeahTokenControlMultiSig {
     event Deposit(address indexed sender, uint amount, uint balance);
     event SubmitTransaction(
         address indexed owner,
@@ -54,19 +54,6 @@ contract tokenControlMultiSig {
     }
 
     constructor() {
-        address[3] memory _owners = [
-            0x68C6Bc0b3a315d4c736514A0685b63458937728A,
-            0x684585A4E1F28D83F7404F0ec785758C100a3509,
-            0xFF5bE4c96A0f54d86a6b1D709e4C05601C8ea0AB
-        ];
-
-        for (uint i = 0; i < _owners.length; i++) {
-            address owner = _owners[i];
-
-            isOwner[owner] = true;
-            owners.push(owner);
-        }
-
         numConfirmationsRequired = 2;
     }
 
@@ -74,19 +61,24 @@ contract tokenControlMultiSig {
         emit Deposit(msg.sender, msg.value, address(this).balance);
     }
 
+    function addOwner(address newOwner) public {
+        require(!isOwner[newOwner], "address is already owner");
+        isOwner[newOwner] = true;
+        owners.push(newOwner);
+    }
+
     //function propose mint
     //A function that calls directly the mint function in the ERC20 to mint a certain amount of ERC20 tokens to an address
     function erc20Mint(
         address erc20ContractAddress,
-        address mintRecipient,
-        uint256 tokensToMint
-    ) public onlyOwner {
+        uint256 tokenAmountToMint
+    ) public onlyOwner returns (uint txIndex) {
         bytes memory _data = abi.encodeWithSignature(
             "mintTokensTo(address,uint256)",
-            mintRecipient,
-            tokensToMint
+            msg.sender,
+            tokenAmountToMint
         );
-        uint txIndex = transactions.length;
+        txIndex = transactions.length;
         transactions.push(
             Transaction({
                 to: erc20ContractAddress,
@@ -179,5 +171,11 @@ contract tokenControlMultiSig {
             transaction.executed,
             transaction.numConfirmations
         );
+    }
+
+    function getLastTxIndex() public view returns (uint lastTxIndex) {
+        uint txLength = transactions.length;
+        require(txLength > 0, "no registered transactions");
+        lastTxIndex = txLength - 1;
     }
 }

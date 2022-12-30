@@ -14,7 +14,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         ? 1
         : VERIFICATION_BLOCK_CONFIRMATIONS
     console.log("deploying tokenControl")
-    const tokenControl = await deploy("tokenControlMultiSig", {
+    const tokenControl = await deploy("YeahTokenControlMultiSig", {
         from: deployer,
         args: [],
         log: true,
@@ -30,7 +30,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     })
     dexArgs = [yeahToken.address]
     console.log(`deploying dex with args ${dexArgs}`)
-    const Dex = await deploy("MinimalViableDexV1", {
+    const Dex = await deploy("DexV1", {
         from: deployer,
         args: dexArgs,
         log: true,

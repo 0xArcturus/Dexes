@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 //This is an exercise to put into practice a basic Dex based on Uniswap's V1 protocol,
 //as a pair that exchanges native ETH with the ERC20 token address we introduce on contract deployment.
-contract MinimalViableDexV1 {
+contract DexV1 {
     using SafeMath for uint256;
     IERC20 token;
     uint256 public totalLiquidity;
@@ -16,6 +16,24 @@ contract MinimalViableDexV1 {
         token = IERC20(yeahTokenAddress);
     }
 
+    //getters
+    function getLiquidity() public view returns (uint256) {
+        return totalLiquidity;
+    }
+
+    function getTokenReserves() public view returns (uint256) {
+        return token.balanceOf(address(this));
+    }
+
+    function getLiquidityProvided(address liquidityProvider) public view returns (uint256) {
+        require(
+            liquidityProvided[liquidityProvider] > 0,
+            "address has not provided liquidity to this pool"
+        );
+        return liquidityProvided[liquidityProvider];
+    }
+
+    //to init, the contract must be approved to perform the transfer
     function init(uint256 tokens) public payable returns (uint256) {
         require(totalLiquidity == 0, "dex has already been initialized");
         //if someone send eth before calling the init function, the liquidity provided will be captured by
@@ -62,6 +80,16 @@ contract MinimalViableDexV1 {
         return tokensBought;
     }
 
+    function ethToTokenView(uint256 msgValue) public view returns (uint256) {
+        uint256 tokenReserve = token.balanceOf(address(this));
+        //ETH is X, tokens are Y
+        //y - b = y'
+        //how many tokens are we getting?
+        uint256 tokensBought = price(msgValue, address(this).balance.sub(msgValue), tokenReserve); // a , x=x'- a, y
+
+        return tokensBought;
+    }
+
     function tokenToEth(uint256 tokens) public payable returns (uint256) {
         uint256 tokenReserve = token.balanceOf(address(this));
         //in this case, tokens is X, Y is eth
@@ -71,6 +99,15 @@ contract MinimalViableDexV1 {
         require(token.transferFrom(msg.sender, address(this), tokens), "failed to transfer tokens");
         (bool sent, ) = msg.sender.call{value: ethBought}("");
         require(sent, "failed to send ETH");
+        return ethBought;
+    }
+
+    function tokenToEthView(uint256 tokens) public view returns (uint256) {
+        uint256 tokenReserve = token.balanceOf(address(this));
+        //in this case, tokens is X, Y is eth
+        //y - b = y'
+        //how many ETH are we getting?
+        uint256 ethBought = price(tokens, tokenReserve, address(this).balance); // a , x, y
         return ethBought;
     }
 
@@ -112,6 +149,7 @@ contract MinimalViableDexV1 {
         //liquidity subtracted from the users liquidity balance -1 = 0
         liquidityProvided[msg.sender] = liquidityProvided[msg.sender].sub(eth_amount);
 
+        totalLiquidity = totalLiquidity.sub(eth_amount);
         //transfer eth to user natively
         payable(msg.sender).transfer(eth_amount);
         //transfer 2000 dai to user
