@@ -11,6 +11,10 @@ contract DexV1 {
     IERC20 token;
     uint256 public totalLiquidity;
     mapping(address => uint256) public liquidityProvided;
+    uint256 public ethRes;
+    uint256 public tokenRes;
+    uint256 public msgVal;
+    uint256 public tokenAmount;
 
     constructor(address yeahTokenAddress) public {
         token = IERC20(yeahTokenAddress);
@@ -18,6 +22,10 @@ contract DexV1 {
 
     //getters
     function getLiquidity() public view returns (uint256) {
+        return address(this).balance;
+    }
+
+    function getTotalLiquidity() public view returns (uint256) {
         return totalLiquidity;
     }
 
@@ -36,7 +44,7 @@ contract DexV1 {
     //to init, the contract must be approved to perform the transfer
     function init(uint256 tokens) public payable returns (uint256) {
         require(totalLiquidity == 0, "dex has already been initialized");
-        //if someone send eth before calling the init function, the liquidity provided will be captured by
+        // if someone send eth before calling the init function, the liquidity provided will be captured by
         //the user that calls init.
         totalLiquidity = address(this).balance;
         liquidityProvided[msg.sender] = totalLiquidity;
@@ -85,7 +93,7 @@ contract DexV1 {
         //ETH is X, tokens are Y
         //y - b = y'
         //how many tokens are we getting?
-        uint256 tokensBought = price(msgValue, address(this).balance.sub(msgValue), tokenReserve); // a , x=x'- a, y
+        uint256 tokensBought = price(msgValue, address(this).balance, tokenReserve); // a , x=x'- a, y
 
         return tokensBought;
     }
@@ -114,12 +122,15 @@ contract DexV1 {
     function deposit() public payable returns (uint256) {
         //checks the original ETH reserve, subtracting what we have sent
         uint256 eth_reserve = address(this).balance.sub(msg.value);
+        ethRes = eth_reserve;
         //Token reserve
         uint256 token_reserve = token.balanceOf(address(this));
-
+        tokenRes = token_reserve;
         //token amount example with a pool with reserves of 4 eth and 8000 Dai
         // we send 1 eth, 1 * 8000 / 4 = 2000, therefore it will input the balance of 1 2000, which is correct.
         uint256 token_amount = (msg.value.mul(token_reserve) / eth_reserve).add(1);
+        msgVal = msg.value;
+        tokenAmount = token_amount;
 
         //((eth sent * total liquidity shares ) / eth reserves ) + 1
         // the previous formula with 18 decimals makes it so that the LP tokens minted to the user is

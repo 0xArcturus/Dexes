@@ -311,8 +311,8 @@
       ]
     },
     "/home/chockblain/code/dex/contracts/DexV1.sol": {
-      "lastModificationDate": 1672393001136,
-      "contentHash": "dd03d6b504b56e99a240ac40faba966b",
+      "lastModificationDate": 1673923147377,
+      "contentHash": "a9c6b0d154e854f66a1e64fe41de3f7c",
       "sourceName": "contracts/DexV1.sol",
       "solcConfig": {
         "version": "0.8.0",
