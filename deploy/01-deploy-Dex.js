@@ -36,12 +36,21 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         log: true,
         waitConfirmations: waitBlockConfirmations,
     })
+    console.log(`deploying dex with args ${dexArgs}`)
+    LPtokenargs = [Dex.address]
+    const LPToken = await deploy("LPToken", {
+        from: deployer,
+        args: LPtokenargs,
+        log: true,
+        waitConfirmations: waitBlockConfirmations,
+    })
     const networkName = network.name == "hardhat" ? "localhost" : network.name
     log(`deployed contract on ${networkName}`)
     if (!developmentChains.includes(network.name) && process.env.ETHERSCAN_API_KEY) {
         await verify(Dex.address, dexArgs)
         await verify(yeahToken.address, yeahTokenArgs)
         await verify(tokenControl.address, [])
+        await verify(LPToken.address, LPtokenargs)
     }
 }
 

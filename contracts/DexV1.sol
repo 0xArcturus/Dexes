@@ -11,13 +11,19 @@ contract DexV1 {
     IERC20 token;
     uint256 public totalLiquidity;
     mapping(address => uint256) public liquidityProvided;
-    uint256 public ethRes;
-    uint256 public tokenRes;
-    uint256 public msgVal;
-    uint256 public tokenAmount;
+    address public LPTokenAddress;
+    address public LPTokenAddressSetter;
+    event deposited(uint256 indexed _ethAmount, uint256 indexed amountSentToFunc);
+    event withdrawed(uint256 indexed _ethAmount, uint256 indexed amountSentToFunc);
 
     constructor(address yeahTokenAddress) public {
         token = IERC20(yeahTokenAddress);
+        LPTokenAddressSetter = msg.sender;
+    }
+
+    function LPTokenSetAddress(address _LPTokenAddress) public {
+        require(msg.sender == LPTokenAddressSetter, "you are not the address setter");
+        LPTokenAddress = _LPTokenAddress;
     }
 
     //getters
@@ -48,6 +54,11 @@ contract DexV1 {
         //the user that calls init.
         totalLiquidity = address(this).balance;
         liquidityProvided[msg.sender] = totalLiquidity;
+        //mint the LP tokens to the address that initializes the pool
+        (bool success, ) = LPTokenAddress.call(
+            abi.encodeWithSignature("mintTokensTo(address,uint256)", msg.sender, totalLiquidity)
+        );
+        require(success, "mint tx failed");
         require(token.transferFrom(msg.sender, address(this), tokens)); //transfer call for the amount we set as an input to this func
         return totalLiquidity;
     }
@@ -122,20 +133,21 @@ contract DexV1 {
     function deposit() public payable returns (uint256) {
         //checks the original ETH reserve, subtracting what we have sent
         uint256 eth_reserve = address(this).balance.sub(msg.value);
-        ethRes = eth_reserve;
         //Token reserve
         uint256 token_reserve = token.balanceOf(address(this));
-        tokenRes = token_reserve;
         //token amount example with a pool with reserves of 4 eth and 8000 Dai
         // we send 1 eth, 1 * 8000 / 4 = 2000, therefore it will input the balance of 1 2000, which is correct.
         uint256 token_amount = (msg.value.mul(token_reserve) / eth_reserve).add(1);
-        msgVal = msg.value;
-        tokenAmount = token_amount;
 
         //((eth sent * total liquidity shares ) / eth reserves ) + 1
         // the previous formula with 18 decimals makes it so that the LP tokens minted to the user is
         //equal to the eth send, since the total liquidity shares in V1 is always going to be equal to the eth reserves.
         uint256 liquidity_minted = msg.value.mul(totalLiquidity) / eth_reserve;
+        emit deposited(liquidity_minted, msg.value);
+        (bool success, ) = LPTokenAddress.call(
+            abi.encodeWithSignature("mintTokensTo(address,uint256)", msg.sender, liquidity_minted)
+        );
+        require(success, "mint tx failed");
         //liquidity tokens added to user balance
         liquidityProvided[msg.sender] = liquidityProvided[msg.sender].add(liquidity_minted);
         //update total liquidity for future liquidity operations
@@ -159,7 +171,11 @@ contract DexV1 {
         uint256 token_amount = amount.mul(token_reserve) / totalLiquidity;
         //liquidity subtracted from the users liquidity balance -1 = 0
         liquidityProvided[msg.sender] = liquidityProvided[msg.sender].sub(eth_amount);
-
+        emit withdrawed(token_amount, amount);
+        (bool success, ) = LPTokenAddress.call(
+            abi.encodeWithSignature("burnTokensTo(address,uint256)", msg.sender, eth_amount)
+        );
+        require(success, "burn tx failed");
         totalLiquidity = totalLiquidity.sub(eth_amount);
         //transfer eth to user natively
         payable(msg.sender).transfer(eth_amount);
