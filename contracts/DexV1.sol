@@ -10,7 +10,6 @@ contract DexV1 {
     using SafeMath for uint256;
     IERC20 token;
     uint256 public totalLiquidity;
-    mapping(address => uint256) public liquidityProvided;
     address public LPTokenAddress;
     address public LPTokenAddressSetter;
     event deposited(uint256 indexed _ethAmount, uint256 indexed amountSentToFunc);
@@ -39,21 +38,12 @@ contract DexV1 {
         return token.balanceOf(address(this));
     }
 
-    function getLiquidityProvided(address liquidityProvider) public view returns (uint256) {
-        require(
-            liquidityProvided[liquidityProvider] > 0,
-            "address has not provided liquidity to this pool"
-        );
-        return liquidityProvided[liquidityProvider];
-    }
-
     //to init, the contract must be approved to perform the transfer
     function init(uint256 tokens) public payable returns (uint256) {
         require(totalLiquidity == 0, "dex has already been initialized");
         // if someone send eth before calling the init function, the liquidity provided will be captured by
         //the user that calls init.
         totalLiquidity = address(this).balance;
-        liquidityProvided[msg.sender] = totalLiquidity;
         //mint the LP tokens to the address that initializes the pool
         (bool success, ) = LPTokenAddress.call(
             abi.encodeWithSignature("mintTokensTo(address,uint256)", msg.sender, totalLiquidity)
@@ -149,7 +139,6 @@ contract DexV1 {
         );
         require(success, "mint tx failed");
         //liquidity tokens added to user balance
-        liquidityProvided[msg.sender] = liquidityProvided[msg.sender].add(liquidity_minted);
         //update total liquidity for future liquidity operations
         totalLiquidity = totalLiquidity.add(liquidity_minted);
         //call transferFrom with the approved tokens to this contract to finish adding liquidity
@@ -170,10 +159,9 @@ contract DexV1 {
         //1 * 10000 / 5 = 2000
         uint256 token_amount = amount.mul(token_reserve) / totalLiquidity;
         //liquidity subtracted from the users liquidity balance -1 = 0
-        liquidityProvided[msg.sender] = liquidityProvided[msg.sender].sub(eth_amount);
         emit withdrawed(token_amount, amount);
         (bool success, ) = LPTokenAddress.call(
-            abi.encodeWithSignature("burnTokensTo(address,uint256)", msg.sender, eth_amount)
+            abi.encodeWithSignature("burnTokensTo(address,uint256)", msg.sender, amount)
         );
         require(success, "burn tx failed");
         totalLiquidity = totalLiquidity.sub(eth_amount);
