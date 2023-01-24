@@ -14,21 +14,21 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         ? 1
         : VERIFICATION_BLOCK_CONFIRMATIONS
     console.log("deploying tokenControl")
-    const tokenControl = await deploy("YeahTokenControlMultiSig", {
+    const tokenControl = await deploy("DEXTokenControlMultiSig", {
         from: deployer,
         args: [],
         log: true,
         waitConfirmations: waitBlockConfirmations,
     })
-    yeahTokenArgs = [tokenControl.address]
-    console.log(`deploying yeahToken with args ${yeahTokenArgs}`)
-    const yeahToken = await deploy("YEAHToken", {
+    DEXTokenArgs = [tokenControl.address]
+    console.log(`deploying DEXToken with args ${DEXTokenArgs}`)
+    const DEXToken = await deploy("DEXToken", {
         from: deployer,
-        args: yeahTokenArgs,
+        args: DEXTokenArgs,
         log: true,
         waitConfirmations: waitBlockConfirmations,
     })
-    dexArgs = [yeahToken.address]
+    dexArgs = [DEXToken.address]
     console.log(`deploying dex with args ${dexArgs}`)
     const Dex = await deploy("DexV1", {
         from: deployer,
@@ -48,7 +48,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     log(`deployed contract on ${networkName}`)
     if (!developmentChains.includes(network.name) && process.env.ETHERSCAN_API_KEY) {
         await verify(Dex.address, dexArgs)
-        await verify(yeahToken.address, yeahTokenArgs)
+        await verify(DEXToken.address, DEXTokenArgs)
         await verify(tokenControl.address, [])
         await verify(LPToken.address, LPtokenargs)
     }

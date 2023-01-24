@@ -3,10 +3,10 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract YEAHToken is ERC20 {
+contract DEXToken is ERC20 {
     address public controlMultiSig;
 
-    constructor(address _controlMultiSig) public ERC20("Yeah", "YEAH") {
+    constructor(address _controlMultiSig) public ERC20("DEX", "DEX") {
         _mint(msg.sender, 1000);
         controlMultiSig = _controlMultiSig;
     }

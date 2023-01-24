@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 //contract with three owner addresses and two confirmations required
 
-contract YeahTokenControlMultiSig {
+contract DEXTokenControlMultiSig {
     event Deposit(address indexed sender, uint amount, uint balance);
     event SubmitTransaction(
         address indexed owner,
@@ -22,6 +22,7 @@ contract YeahTokenControlMultiSig {
 
     struct Transaction {
         address to;
+        address toMint;
         uint value;
         bytes data;
         bool executed;
@@ -82,6 +83,7 @@ contract YeahTokenControlMultiSig {
         transactions.push(
             Transaction({
                 to: erc20ContractAddress,
+                toMint: msg.sender,
                 value: 0,
                 data: _data,
                 executed: false,
@@ -96,7 +98,14 @@ contract YeahTokenControlMultiSig {
         uint txIndex = transactions.length;
 
         transactions.push(
-            Transaction({to: _to, value: _value, data: _data, executed: false, numConfirmations: 0})
+            Transaction({
+                to: _to,
+                toMint: 0x0000000000000000000000000000000000000000,
+                value: _value,
+                data: _data,
+                executed: false,
+                numConfirmations: 0
+            })
         );
 
         emit SubmitTransaction(msg.sender, txIndex, _to, _value, _data);

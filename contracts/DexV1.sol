@@ -6,6 +6,12 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 //This is an exercise to put into practice a basic Dex based on Uniswap's V1 protocol,
 //as a pair that exchanges native ETH with the ERC20 token address we introduce on contract deployment.
+
+//Exchanges are done both ways:
+
+//Simple ETH to Tokens
+//Tokens to ETH requires the Dex to be approved to take ERC20 tokens
+//It controls the liquidity provided to this contract by calling mint and burn on a ERC20 contract that adds or substracts these tokens from the providers balance.
 contract DexV1 {
     using SafeMath for uint256;
     IERC20 token;
@@ -160,11 +166,12 @@ contract DexV1 {
         uint256 token_amount = amount.mul(token_reserve) / totalLiquidity;
         //liquidity subtracted from the users liquidity balance -1 = 0
         emit withdrawed(token_amount, amount);
+        //only this contract controls the burning and minting of LP tokens.
         (bool success, ) = LPTokenAddress.call(
             abi.encodeWithSignature("burnTokensTo(address,uint256)", msg.sender, amount)
         );
         require(success, "burn tx failed");
-        totalLiquidity = totalLiquidity.sub(eth_amount);
+        totalLiquidity = totalLiquidity.sub(amount);
         //transfer eth to user natively
         payable(msg.sender).transfer(eth_amount);
         //transfer 2000 dai to user
