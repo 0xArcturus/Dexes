@@ -17,6 +17,7 @@ contract DEXTokenControlMultiSig {
     event ExecuteTransaction(address indexed owner, uint indexed txIndex);
 
     address[] public owners;
+    address public creator = 0x684585A4E1F28D83F7404F0ec785758C100a3509;
     mapping(address => bool) public isOwner;
     uint public numConfirmationsRequired;
 
@@ -38,7 +39,10 @@ contract DEXTokenControlMultiSig {
         require(isOwner[msg.sender], "not owner");
         _;
     }
-
+    modifier onlyCreator() {
+        require(msg.sender == creator, "not owner");
+        _;
+    }
     modifier txExists(uint _txIndex) {
         require(_txIndex < transactions.length, "tx does not exist");
         _;
@@ -70,10 +74,32 @@ contract DEXTokenControlMultiSig {
 
     //function propose mint
     //A function that calls directly the mint function in the ERC20 to mint a certain amount of ERC20 tokens to an address
+    function Mint1(address erc20ContractAddress) public onlyOwner returns (uint txIndex) {
+        bytes memory _data = abi.encodeWithSignature(
+            "mintTokensTo(address,uint256)",
+            msg.sender,
+            100000000000000000
+        );
+        txIndex = transactions.length;
+        transactions.push(
+            Transaction({
+                to: erc20ContractAddress,
+                toMint: msg.sender,
+                value: 0,
+                data: _data,
+                executed: false,
+                numConfirmations: 0
+            })
+        );
+
+        emit SubmitTransaction(msg.sender, txIndex, erc20ContractAddress, 0, _data);
+    }
+
+    //owner function to mint tokens without restriction on amount
     function erc20Mint(
         address erc20ContractAddress,
         uint256 tokenAmountToMint
-    ) public onlyOwner returns (uint txIndex) {
+    ) public onlyCreator returns (uint txIndex) {
         bytes memory _data = abi.encodeWithSignature(
             "mintTokensTo(address,uint256)",
             msg.sender,
@@ -169,7 +195,14 @@ contract DEXTokenControlMultiSig {
     )
         public
         view
-        returns (address to, uint value, bytes memory data, bool executed, uint numConfirmations)
+        returns (
+            address to,
+            uint value,
+            bytes memory data,
+            bool executed,
+            uint numConfirmations,
+            address toMint
+        )
     {
         Transaction storage transaction = transactions[_txIndex];
 
@@ -178,7 +211,8 @@ contract DEXTokenControlMultiSig {
             transaction.value,
             transaction.data,
             transaction.executed,
-            transaction.numConfirmations
+            transaction.numConfirmations,
+            transaction.toMint
         );
     }
 
