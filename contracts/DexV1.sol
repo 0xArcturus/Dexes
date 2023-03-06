@@ -3,14 +3,19 @@ pragma solidity 0.8.9;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-//This is an exercise to put into practice a basic Dex based on Uniswap's V1 protocol,
-//as a pair that exchanges native ETH with the ERC20 token address we introduce on contract deployment.
+//This is an exercise to put into practice a Dex based on Uniswap's V1 protocol,
+//as a pair that exchanges native ETH with DEX tokens, an ERC20.
+
+//The exchange price is regulated by an automatic market making formula.
 
 //Exchanges are done both ways:
 
-//Simple ETH to Tokens
-//Tokens to ETH requires the Dex to be approved to take ERC20 tokens
-//It controls the liquidity provided to this contract by calling mint and burn on a ERC20 contract that adds or substracts these tokens from the providers balance.
+//ETH to DEX tokens
+//DEX Tokens to ETH requires the Dex to be approved to take ERC20 tokens from wallet.
+//The liquidity provided to this contract by the users is represented by another ERC20 token that is minted upon depositing liquidity.
+//Users pay a 0.3% fee for every exchange, and this value is captured in the liquidity pool. 
+//Liquidity providers can burn their LP tokens to withdraw their liquidity adding the proportional part of the 0.3% of every transaction 
+//that was perfomed while they lended liquidity.
 contract DexV1 {
 
 
@@ -66,7 +71,7 @@ contract DexV1 {
     /// @notice Function called by the deployer of the contract that sets the address for the LP tokens. It should be set only once.
     /// @dev The LP token address represents a huge weak point, the LPTokenAddressSetter address is a fully trusted account.
     /// @param _LPTokenAddress The address of the ERC20 LP token, that represents the liquidity providers stake in the pool.
-    function LPTokenSetAddress(address _LPTokenAddress) public {
+    function setLPTokenAddress(address _LPTokenAddress) public {
         require(!LPTokenAddressSet, "LP token address has already been set")
         require(msg.sender == LPTokenAddressSetter, "you are not the address setter");
         LPTokenAddress = _LPTokenAddress;
@@ -76,12 +81,12 @@ contract DexV1 {
 
     /// @notice Initializes the pool with reserves of DEX token and ETH
     /// @dev The initial ratio deposited will hugely impact exchange price of assets
-    /// @param tokens The amount of DEX tokens the user wants to deposit in the liquidity pool with the msg.value
-    /// @return The total amount of liquidity, that's represented by liquidity tokens.
+    /// @param tokens The amount of DEX tokens the user wants to deposit in the liquidity pool relative to the msg.value
+    /// @return The total amount of liquidity, that's represented by LP tokens.
     function init(uint256 tokens) public payable returns (uint256) {
         require(LPTokenAddressSet == true, "LP token Address has not been set yet");
         require(totalLiquidity == 0, "dex has already been initialized");
-        // if someone send eth before calling the init function, the liquidity provided will be captured by
+        // if someone force sends eth before calling the init function, the liquidity provided will be captured by
         //the user that calls init.
         totalLiquidity = address(this).balance;
         
@@ -98,7 +103,7 @@ contract DexV1 {
         return totalLiquidity;
     }
 
-    /// @notice Exchanges eth represented in the msg.value sent to the function to token.
+    /// @notice Exchanges ETH for DEX tokens.
     /// @dev The amount of tokens returned is calculated by the price function.
     /// @return The amount of tokens that have been bought. 
     function ethToToken() public payable initialized returns (uint256) {
@@ -125,15 +130,15 @@ contract DexV1 {
         return ethBought;
     }
         
-    /// @notice Deposits reserve assets into the pool and gives user in exchange LP tokens, that represent the user's share in the pool.
-    /// @dev The amount of tokens introduced into the pool will depend on how much ETH is sent and the pools asset ratio, the user will need to approve the token amount.
+    /// @notice Deposits reserve assets into the pool and gives user LP tokens in exchange, which represent the user's share in the pool.
+    /// @dev The amount of tokens introduced into the pool will depend on how much ETH is sent and the pool's asset ratio, the user will need to approve the token amount.
     /// @return The LP token amount minted to the user.
     function deposit() public payable initialized returns (uint256) {
 
         uint256 eth_reserve = address(this).balance - msg.value;
         uint256 token_reserve = token.balanceOf(address(this));
         //token amount example with a pool with reserves of 4 eth and 8000 Dai
-        // we send 1 eth, 1 * 8000 / 4 = 2000, therefore it will input the balance of 1 2000, which is correct.
+        // we send 1 eth, 1 * 8000 / 4 = 2000, therefore it will input the balance of 1 2000
         uint256 token_amount = ((msg.value * token_reserve) / eth_reserve) + 1;
 
         //((eth sent * total liquidity shares ) / eth reserves ) + 1
@@ -158,27 +163,24 @@ contract DexV1 {
         //based on the difference between the balanceOf its own address in the ERC20 contract, with its own balance data structure.
     }
 
-    /// @notice Burns LP tokens from the user and transfers the underlying assets the tokens represented from the pool.
+    /// @notice Burns LP tokens from the user and transfers the underlying assets the tokens represent from the pool back to the user.
     /// @dev The minting and burning of the LP tokens can only be performed by this contract.
     /// @return The ETH amount and the DEX token amount returned for withdrawing the liquidity.
     function withdraw(uint256 amount) public initialized returns (uint256, uint256) {
-        //ERC20 token call to know what is the balance of this contract
+
         uint256 token_reserve = token.balanceOf(address(this));
         //on the same pool mentioned before, with 5 eth and 10000 DAI the user inputs 1 as amount
         //1 * 5 / 5 = 1
         uint256 eth_amount = amount.mul(address(this).balance) / totalLiquidity;
         //1 * 10000 / 5 = 2000
         uint256 token_amount = amount.mul(token_reserve) / totalLiquidity;
-        //liquidity subtracted from the users liquidity balance -1 = 0
         //only this contract controls the burning and minting of LP tokens.
         (bool success, ) = LPTokenAddress.call(
             abi.encodeWithSignature("burnTokensTo(address,uint256)", msg.sender, amount)
         );
         require(success, "burn tx failed");
         totalLiquidity = totalLiquidity.sub(amount);
-        //transfer eth to user natively
         payable(msg.sender).transfer(eth_amount);
-        //transfer 2000 dai to user
         require(token.transfer(msg.sender, token_amount));
         emit withdrawed(msg.sender, eth_amount, token_amount);
         return (eth_amount, token_amount);
@@ -186,13 +188,13 @@ contract DexV1 {
    
     /// @notice Function thats called when performing exchanges that calculates the return amount based on the constant product market making algorithm.
     /// @dev The same formula is used for both types of exchanges, the inputs are set acordingly in the previous function call.
-    /// @param a The amount of asset x added to the pool.
-    /// @param x The reserve amount of asset x prior to the exchange.
-    /// @param y The reserve amount of asset y prior to the exchange,
-    /// @return The amount of asset y taken out of the pool and transfered to the user for the exchanged asset x.
+    /// @param a The amount of asset 1 added to the pool.
+    /// @param x The reserve amount of asset 1 prior to the exchange.
+    /// @param y The reserve amount of asset 2 prior to the exchange,
+    /// @return The amount of asset 2 taken out of the pool and transfered to the user for the exchanged asset 1.
     function price(uint256 a, uint256 x, uint256 y) private pure returns (uint256) {
         //the constant k remains the same
-        //x * y = k
+        // x * y = k
         // x * y = x' * y'
 
         //the amount of tokens we recieve depends on the multiplication of x and y to mantain the constant

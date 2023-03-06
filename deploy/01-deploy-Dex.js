@@ -52,6 +52,8 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         await verify(tokenControl.address, [])
         await verify(LPToken.address, LPtokenargs)
     }
+    const successSetLPTokenAddress = await Dex.setLPTokenAddress(LPToken.address)
+    console.log(`LP address set: ${successSetLPTokenAddress}`)
 }
 
 module.exports.tags = ["all", "contracts"]

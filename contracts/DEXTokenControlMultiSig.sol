@@ -1,9 +1,28 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-//contract with three owner addresses and two confirmations required
-
+/// @title DEX-ERC20 token minting Multi-Sig
+/// @author 0x4152
+/// @notice The minting of the DEX token can only be performed by the mint01 and erc20Mint functions from this contract.
+/// @notice This contract keeps track of a list of "owners" that have authority to queue mint01 function calls as a standard Multi-Sig.
+/// @notice There is no restriction to be added to the owner list, anyone can therefore confirm transactions, revoke confirmation and queue mint01 transactions.
 contract DEXTokenControlMultiSig {
+    struct Transaction {
+        address to;
+        address toMint;
+        uint value;
+        bytes data;
+        bool executed;
+        uint numConfirmations;
+    }
+
+    Transaction[] public transactions;
+    uint public numConfirmationsRequired;
+    address[] public owners;
+    address public constant creator = 0x684585A4E1F28D83F7404F0ec785758C100a3509;
+    mapping(address => bool) public isOwner;
+    mapping(uint => mapping(address => bool)) public isConfirmed;
+
     event Deposit(address indexed sender, uint amount, uint balance);
     event SubmitTransaction(
         address indexed owner,
@@ -15,25 +34,6 @@ contract DEXTokenControlMultiSig {
     event ConfirmTransaction(address indexed owner, uint indexed txIndex);
     event RevokeConfirmation(address indexed owner, uint indexed txIndex);
     event ExecuteTransaction(address indexed owner, uint indexed txIndex);
-
-    address[] public owners;
-    address public creator = 0x684585A4E1F28D83F7404F0ec785758C100a3509;
-    mapping(address => bool) public isOwner;
-    uint public numConfirmationsRequired;
-
-    struct Transaction {
-        address to;
-        address toMint;
-        uint value;
-        bytes data;
-        bool executed;
-        uint numConfirmations;
-    }
-
-    // mapping from tx index => owner => bool
-    mapping(uint => mapping(address => bool)) public isConfirmed;
-
-    Transaction[] public transactions;
 
     modifier onlyOwner() {
         require(isOwner[msg.sender], "not owner");
@@ -74,7 +74,7 @@ contract DEXTokenControlMultiSig {
 
     //function propose mint
     //A function that calls directly the mint function in the ERC20 to mint a certain amount of ERC20 tokens to an address
-    function Mint1(address erc20ContractAddress) public onlyOwner returns (uint txIndex) {
+    function mint01(address erc20ContractAddress) public onlyOwner returns (uint txIndex) {
         bytes memory _data = abi.encodeWithSignature(
             "mintTokensTo(address,uint256)",
             msg.sender,
@@ -120,7 +120,7 @@ contract DEXTokenControlMultiSig {
         emit SubmitTransaction(msg.sender, txIndex, erc20ContractAddress, 0, _data);
     }
 
-    function submitTransaction(address _to, uint _value, bytes memory _data) public onlyOwner {
+    function submitTransaction(address _to, uint _value, bytes memory _data) public onlyCreator {
         uint txIndex = transactions.length;
 
         transactions.push(
