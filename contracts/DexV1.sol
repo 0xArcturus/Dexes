@@ -12,18 +12,22 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 //ETH to DEX tokens
 //DEX Tokens to ETH requires the Dex to be approved to take ERC20 tokens from wallet.
-//The liquidity provided to this contract by the users is represented by another ERC20 token that is minted upon depositing liquidity.
-//Users pay a 0.3% fee for every exchange, and this value is captured in the liquidity pool. 
-//Liquidity providers can burn their LP tokens to withdraw their liquidity adding the proportional part of the 0.3% of every transaction 
+
+//The liquidity provided to this contract by the users is represented by another ERC20 token that is minted upon liquidity deposits.
+//Users pay a 0.3% fee for every exchange, and this value is captured in the liquidity pool.
+//Liquidity providers can burn their LP tokens to withdraw their liquidity adding the proportional part of the 0.3% of every transaction
 //that was perfomed while they lended liquidity.
+
+/// @title AMM Decentralized Exchange for DEX / ETH pair
+/// @author 0x4152
+/// @notice This contract is meant to showcase how a AMM DEX with LP tokens works, it is for educational purposes.
 contract DexV1 {
-
-
     IERC20 token;
+
     uint256 public totalLiquidity;
     address public LPTokenAddress;
-    bool internal LPTokenAddressSet = false;
-    bool internal initialized = false;
+    bool internal LPTokenAddressIsSet = false;
+    bool internal isInitialized = false;
     address public LPTokenAddressSetter;
 
     event Initialized(
@@ -32,13 +36,13 @@ contract DexV1 {
         address indexed initializer
     );
     event Deposited(
-        address indexed user, 
-        uint256 indexed ethDeposited, 
+        address indexed user,
+        uint256 indexed ethDeposited,
         uint256 indexed tokensDeposited
     );
     event Withdrawed(
-        address indexed user, 
-        uint256 indexed ethWithdrawed, 
+        address indexed user,
+        uint256 indexed ethWithdrawed,
         uint256 indexed tokensWithdrawed
     );
     event EthToTokenExchanged(
@@ -52,16 +56,16 @@ contract DexV1 {
         uint256 indexed ethBought
     );
     event LPTokenAddressSet(
-        address indexed LPTokenAddress, 
-        address indexed user, 
-        uint256 indexed time 
+        address indexed LPTokenAddress,
+        address indexed user,
+        uint256 indexed time
     );
 
     /// @notice Checks in several functions that the contract has been initialized.
-    modifier initialized {
-        require(initialized == true, "liquidity pool has not been initialized yet");
-         _;
-    } 
+    modifier initialized() {
+        require(isInitialized == true, "liquidity pool has not been initialized yet");
+        _;
+    }
 
     constructor(address yeahTokenAddress) public {
         token = IERC20(yeahTokenAddress);
@@ -72,10 +76,10 @@ contract DexV1 {
     /// @dev The LP token address represents a huge weak point, the LPTokenAddressSetter address is a fully trusted account.
     /// @param _LPTokenAddress The address of the ERC20 LP token, that represents the liquidity providers stake in the pool.
     function setLPTokenAddress(address _LPTokenAddress) public {
-        require(!LPTokenAddressSet, "LP token address has already been set")
+        require(!LPTokenAddressIsSet, "LP token address has already been set");
         require(msg.sender == LPTokenAddressSetter, "you are not the address setter");
         LPTokenAddress = _LPTokenAddress;
-        LPTokenAddressSet = true;
+        LPTokenAddressIsSet = true;
         emit LPTokenAddressSet(_LPTokenAddress, msg.sender, block.timestamp);
     }
 
@@ -84,31 +88,32 @@ contract DexV1 {
     /// @param tokens The amount of DEX tokens the user wants to deposit in the liquidity pool relative to the msg.value
     /// @return The total amount of liquidity, that's represented by LP tokens.
     function init(uint256 tokens) public payable returns (uint256) {
-        require(LPTokenAddressSet == true, "LP token Address has not been set yet");
+        require(LPTokenAddressIsSet == true, "LP token Address has not been set yet");
         require(totalLiquidity == 0, "dex has already been initialized");
+        require(msg.value > 0, "ETH amount must be over 0");
+        require(tokens > 0, "DEX token amount must be over 0");
         // if someone force sends eth before calling the init function, the liquidity provided will be captured by
         //the user that calls init.
         totalLiquidity = address(this).balance;
-        
-       
-        require(token.transferFrom(msg.sender, address(this), tokens)); 
+
+        require(token.transferFrom(msg.sender, address(this), tokens));
 
         //mint the LP tokens to the address that initializes the pool
         (bool success, ) = LPTokenAddress.call(
             abi.encodeWithSignature("mintTokensTo(address,uint256)", msg.sender, totalLiquidity)
         );
         require(success, "mint tx failed");
-        initialized = true;
+        isInitialized = true;
         emit Initialized(totalLiquidity, tokens, msg.sender);
         return totalLiquidity;
     }
 
     /// @notice Exchanges ETH for DEX tokens.
     /// @dev The amount of tokens returned is calculated by the price function.
-    /// @return The amount of tokens that have been bought. 
+    /// @return The amount of tokens that have been bought.
     function ethToToken() public payable initialized returns (uint256) {
         uint256 tokenReserve = token.balanceOf(address(this));
-        uint256 tokensBought = price(msg.value, address(this).balance.sub(msg.value), tokenReserve); 
+        uint256 tokensBought = price(msg.value, address(this).balance - msg.value, tokenReserve);
         require(token.transfer(msg.sender, tokensBought), "failed to transfer ETH");
         emit EthToTokenExchanged(msg.sender, msg.value, tokensBought);
         return tokensBought;
@@ -119,22 +124,19 @@ contract DexV1 {
     /// @param tokens The amount of DEX tokens the user wants to exchange.
     /// @return The amount of ETH the user gets in return for exchaning tokens.
     function tokenToEth(uint256 tokens) public payable initialized returns (uint256) {
-
-   
         uint256 tokenReserve = token.balanceOf(address(this));
-        uint256 ethBought = price(tokens, tokenReserve, address(this).balance); 
+        uint256 ethBought = price(tokens, tokenReserve, address(this).balance);
         require(token.transferFrom(msg.sender, address(this), tokens), "failed to transfer tokens");
         (bool sent, ) = msg.sender.call{value: ethBought}("");
         require(sent, "failed to send ETH");
-        emit TokenToEthExchanged(msg.sender, tokens, ethBought)
+        emit TokenToEthExchanged(msg.sender, tokens, ethBought);
         return ethBought;
     }
-        
+
     /// @notice Deposits reserve assets into the pool and gives user LP tokens in exchange, which represent the user's share in the pool.
     /// @dev The amount of tokens introduced into the pool will depend on how much ETH is sent and the pool's asset ratio, the user will need to approve the token amount.
     /// @return The LP token amount minted to the user.
     function deposit() public payable initialized returns (uint256) {
-
         uint256 eth_reserve = address(this).balance - msg.value;
         uint256 token_reserve = token.balanceOf(address(this));
         //token amount example with a pool with reserves of 4 eth and 8000 Dai
@@ -145,12 +147,12 @@ contract DexV1 {
         // the previous formula with 18 decimals makes it so that the LP tokens minted to the user is
         //equal to the eth sent, since the total liquidity shares in V1 is always going to be equal to the eth reserves.
         uint256 liquidity_minted = (msg.value * totalLiquidity) / eth_reserve;
-        
+
         //liquidity tokens added to user balance
         //update total liquidity for future liquidity operations
         totalLiquidity = totalLiquidity + liquidity_minted;
         //call transferFrom with the approved tokens to this contract to finish adding liquidity
-        require(token.transferFrom(msg.sender, msg.value, token_amount));
+        require(token.transferFrom(msg.sender, address(this), token_amount));
         (bool success, ) = LPTokenAddress.call(
             abi.encodeWithSignature("mintTokensTo(address,uint256)", msg.sender, liquidity_minted)
         );
@@ -167,25 +169,24 @@ contract DexV1 {
     /// @dev The minting and burning of the LP tokens can only be performed by this contract.
     /// @return The ETH amount and the DEX token amount returned for withdrawing the liquidity.
     function withdraw(uint256 amount) public initialized returns (uint256, uint256) {
-
         uint256 token_reserve = token.balanceOf(address(this));
         //on the same pool mentioned before, with 5 eth and 10000 DAI the user inputs 1 as amount
         //1 * 5 / 5 = 1
-        uint256 eth_amount = amount.mul(address(this).balance) / totalLiquidity;
+        uint256 eth_amount = (amount * address(this).balance) / totalLiquidity;
         //1 * 10000 / 5 = 2000
-        uint256 token_amount = amount.mul(token_reserve) / totalLiquidity;
+        uint256 token_amount = (amount * token_reserve) / totalLiquidity;
         //only this contract controls the burning and minting of LP tokens.
         (bool success, ) = LPTokenAddress.call(
             abi.encodeWithSignature("burnTokensTo(address,uint256)", msg.sender, amount)
         );
         require(success, "burn tx failed");
-        totalLiquidity = totalLiquidity.sub(amount);
+        totalLiquidity = totalLiquidity - amount;
         payable(msg.sender).transfer(eth_amount);
         require(token.transfer(msg.sender, token_amount));
-        emit withdrawed(msg.sender, eth_amount, token_amount);
+        emit Withdrawed(msg.sender, eth_amount, token_amount);
         return (eth_amount, token_amount);
     }
-   
+
     /// @notice Function thats called when performing exchanges that calculates the return amount based on the constant product market making algorithm.
     /// @dev The same formula is used for both types of exchanges, the inputs are set acordingly in the previous function call.
     /// @param a The amount of asset 1 added to the pool.
